@@ -1,12 +1,16 @@
 # Helpful GitHub Bookmarklets
 
-Just an assortment of bookmarklets that help with performing various tasks on GitHub.
+An assortment of bookmarklets I made to help with various tasks on GitHub.com.
 
 ## Bookmarklet Categories
+
+The following are the categories I have separated the bookmarklets into using folders.
 
 - Comments: These bookmarklets will help with editing / formatting comments.
 
 ## Bookmarklets Included
+
+The following contains lists of the bookmarklets in this repo separated into sections based on which category / folder they are contained within.
 
 ### Comments
 
