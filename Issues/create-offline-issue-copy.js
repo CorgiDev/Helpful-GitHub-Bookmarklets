@@ -84,10 +84,11 @@ javascript:(async () => {
 
 	const isMediaLikeUrl = (rawUrl) => {
 		if (!rawUrl) return false;
-		const mediaExtPattern = /\.(png|jpe?g|gif|webp|svg|bmp|avif|mp4|mov|webm|ogg|m4v|avi)(\?|#|$)/i;
-		if (mediaExtPattern.test(rawUrl)) return true;
 		try {
 			const parsed = new URL(rawUrl);
+			if (/^avatars\.githubusercontent\.com$/i.test(parsed.hostname)) return false;
+			const mediaExtPattern = /\.(png|jpe?g|gif|webp|svg|bmp|avif|mp4|mov|webm|ogg|m4v|avi)(\?|#|$)/i;
+			if (mediaExtPattern.test(parsed.href)) return true;
 			if (/(^|\.)githubusercontent\.com$/i.test(parsed.hostname)) return true;
 			if (/^github\.com$/i.test(parsed.hostname) && /^\/user-attachments\/assets\//i.test(parsed.pathname)) {
 				return true;
@@ -146,7 +147,7 @@ javascript:(async () => {
 		for (const buttonNode of rootElement.querySelectorAll("button")) {
 			buttonNode.remove();
 		}
-		for (const tooltipNode of rootElement.querySelectorAll("div.prc-TooltipV2-Tooltip-tLeuB")) {
+		for (const tooltipNode of rootElement.querySelectorAll("span.prc-TooltipV2-Tooltip-tLeuB")) {
 			if (/\bReact\b/.test(tooltipNode.textContent)) {
 				tooltipNode.remove();
 			}
@@ -684,7 +685,15 @@ javascript:(async () => {
 </body>
 </html>`;
 
-	const defaultName = sanitizeFileName(`${titleText || "github-item"}.html`) || "github-item.html";
+	const itemTypeByKind = {
+		pull: "PR",
+		issues: "Issue",
+		discussions: "Discussion"
+	};
+	const defaultBaseName = routeInfo
+		? `${itemTypeByKind[routeInfo.kind] || "Item"}-${routeInfo.number}`
+		: titleText || "github-item";
+	const defaultName = sanitizeFileName(defaultBaseName) || "github-item";
 	const selectedNameRaw = prompt("File name for the offline HTML copy:", defaultName);
 	if (selectedNameRaw === null) {
 		alert("Export canceled.");
