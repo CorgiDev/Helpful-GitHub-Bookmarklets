@@ -524,6 +524,11 @@ javascript:(async () => {
 		notice.setAttribute("data-offline-asset-replaced", "true");
 	}
 
+	const assigneesValue = firstNonEmpty(sidebarMetadata.Assignees);
+	if (/no one\s*-\s*assign yourself/i.test(assigneesValue)) {
+		sidebarMetadata.Assignees = "No assignees";
+	}
+
 	const metadataEntries = Object.entries(sidebarMetadata).sort(([a], [b]) => a.localeCompare(b));
 	const metadataHtml = metadataEntries.length
 		? metadataEntries
