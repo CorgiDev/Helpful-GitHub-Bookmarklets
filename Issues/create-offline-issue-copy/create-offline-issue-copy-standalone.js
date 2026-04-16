@@ -1,4 +1,7 @@
-javascript:(async () => {
+// GitHub Offline Issue Copy - Standalone Script
+// To use: Host this file on GitHub Pages or a CDN, then load via the bookmarklet loader
+
+(async () => {
 	if (typeof window.showDirectoryPicker !== "function") {
 		alert(
 			"This bookmarklet needs the File System Access API. Use Chromium-based browsers (for example Chrome or Edge)."
@@ -46,6 +49,43 @@ javascript:(async () => {
 			if (normalized) return normalized;
 		}
 		return "";
+	};
+
+	const escapeRegExp = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+	const isVisibleElement = (element) => {
+		if (!(element instanceof Element)) return false;
+		if (element.closest("[hidden], [aria-hidden='true']")) return false;
+		const style = window.getComputedStyle(element);
+		if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return false;
+		if (element.getClientRects().length === 0) return false;
+		return true;
+	};
+
+	const shouldIgnoreMetadataNode = (element) => {
+		if (!(element instanceof Element)) return false;
+		if (!isVisibleElement(element)) return true;
+		if (element.matches(".prc-TooltipV2-Tooltip-tLeuB, [role='tooltip']")) return true;
+		if (element.closest(".prc-TooltipV2-Tooltip-tLeuB, [role='tooltip']")) return true;
+		if (element.matches("a.FieldsSection-module__giveFeedbackLink__V4V6n.prc-Link-Link-9ZwDx")) return true;
+		if (element.closest("a.FieldsSection-module__giveFeedbackLink__V4V6n.prc-Link-Link-9ZwDx")) return true;
+		return false;
+	};
+
+	const cleanMetadataValue = (rawText, fieldName = "") => {
+		let text = normalizeWhitespace(rawText);
+		if (!text) return "";
+
+		if (fieldName) {
+			const escapedField = escapeRegExp(fieldName);
+			text = text.replace(new RegExp(`^${escapedField}\\s*:?\\s*`, "i"), "");
+			text = text.replace(new RegExp(`^Edit\\s+${escapedField}\\b\\s*:?\\s*`, "i"), "");
+		}
+
+		text = text.replace(/^Edit\b\s*/i, "");
+		text = normalizeWhitespace(text);
+		if (/^edit\b/i.test(text)) return "";
+		return text;
 	};
 
 	const sanitizeFileName = (value) =>
@@ -147,10 +187,8 @@ javascript:(async () => {
 		for (const buttonNode of rootElement.querySelectorAll("button")) {
 			buttonNode.remove();
 		}
-		for (const tooltipNode of rootElement.querySelectorAll("span.prc-TooltipV2-Tooltip-tLeuB")) {
-			if (/\bReact\b/.test(tooltipNode.textContent)) {
-				tooltipNode.remove();
-			}
+		for (const tooltipNode of rootElement.querySelectorAll(".prc-TooltipV2-Tooltip-tLeuB, [role='tooltip'], [aria-hidden='true']")) {
+			tooltipNode.remove();
 		}
 	};
 
@@ -174,11 +212,15 @@ javascript:(async () => {
 		return "";
 	};
 
-	const collectTextValues = (selectors) => {
+	const collectTextValues = (selectors, fieldName = "") => {
 		const values = [];
 		for (const selector of selectors) {
 			for (const node of document.querySelectorAll(selector)) {
-				const text = firstNonEmpty(node.textContent, node.getAttribute("aria-label"), node.getAttribute("title"));
+				if (shouldIgnoreMetadataNode(node)) continue;
+				const text = cleanMetadataValue(
+					firstNonEmpty(node.textContent, node.getAttribute("aria-label"), node.getAttribute("title")),
+					fieldName
+				);
 				if (text) values.push(text);
 			}
 		}
@@ -325,16 +367,17 @@ javascript:(async () => {
 			if (!heading) continue;
 
 			const values = [];
-			const valueNodes = item.querySelectorAll("a, span, strong, li, summary, div");
+			const valueNodes = item.querySelectorAll("a, span, strong, li, summary");
 			for (const valueNode of valueNodes) {
-				const text = normalizeWhitespace(valueNode.textContent);
+				if (shouldIgnoreMetadataNode(valueNode)) continue;
+				const text = cleanMetadataValue(valueNode.textContent, heading);
 				if (!text) continue;
 				if (text.toLowerCase() === heading.toLowerCase()) continue;
 				values.push(text);
 			}
 
 			const deduped = [...new Set(values)];
-			const fallbackText = normalizeWhitespace(item.textContent).replace(new RegExp(`^${heading}`, "i"), "").trim();
+			const fallbackText = cleanMetadataValue(item.textContent, heading);
 			domMetadata[heading] = deduped.length ? deduped.join(", ") : fallbackText || "None";
 		}
 
@@ -344,7 +387,7 @@ javascript:(async () => {
 			"[data-testid='issue-labels'] a",
 			"[data-testid='sidebar-labels'] a",
 			"[aria-label='Labels'] a"
-		]);
+		], "Labels");
 
 		const assigneeValues = collectTextValues([
 			"[aria-label='Assignees'] a",
@@ -353,7 +396,9 @@ javascript:(async () => {
 			"[data-testid='sidebar-assignees'] img[alt]",
 			"[aria-label*='assignee' i] a",
 			"[aria-label*='assignee' i] img[alt]"
-		]).map((value) => value.replace(/^@+/, ""));
+		], "Assignees")
+			.map((value) => value.replace(/^@+/, ""))
+			.filter((value) => !/^assign to agent$/i.test(value));
 
 		const authorValues = collectTextValues([
 			"a.author",
@@ -364,7 +409,7 @@ javascript:(async () => {
 		const milestoneValues = collectTextValues([
 			"[aria-label='Milestone'] a",
 			"[data-testid='sidebar-milestone'] a"
-		]);
+		], "Milestone");
 
 		sidebarMetadata = mergeMetadata(domMetadata, {
 			Labels: labelValues.length ? labelValues.join(", ") : "",
@@ -524,17 +569,76 @@ javascript:(async () => {
 		notice.setAttribute("data-offline-asset-replaced", "true");
 	}
 
+	delete sidebarMetadata.Notifications;
+
+	const fieldsPriorityKey = Object.keys(sidebarMetadata).find((key) => /^fields\s*(and|&)\s*priority$/i.test(key));
+	if (fieldsPriorityKey) {
+		const combined = firstNonEmpty(sidebarMetadata[fieldsPriorityKey]);
+		delete sidebarMetadata[fieldsPriorityKey];
+
+		const fieldsMatch = combined.match(/fields?\s*:?\s*(.*?)(?:\bpriority\b\s*:?|$)/i);
+		const priorityMatch = combined.match(/priority\s*:?\s*(.*)$/i);
+		const fieldsValue = cleanMetadataValue(fieldsMatch ? fieldsMatch[1] : "", "Fields");
+		const priorityValue = cleanMetadataValue(priorityMatch ? priorityMatch[1] : "", "Priority");
+
+		if (fieldsValue && !sidebarMetadata.Fields) sidebarMetadata.Fields = fieldsValue;
+		if (priorityValue && !sidebarMetadata.Priority) sidebarMetadata.Priority = priorityValue;
+	}
+
 	const assigneesValue = firstNonEmpty(sidebarMetadata.Assignees);
 	if (/no one\s*-\s*assign yourself/i.test(assigneesValue)) {
 		sidebarMetadata.Assignees = "No assignees";
 	}
 
+	const developmentValue = firstNonEmpty(sidebarMetadata.Development);
+	if (/create a branch for this issue or link a pull request\./.test(developmentValue)) {
+		sidebarMetadata.Development = "No development links added yet.";
+	}
+
+	if (/no milestone/i.test(firstNonEmpty(sidebarMetadata.Milestone))) {
+		sidebarMetadata.Milestone = "No milestone set";
+	}
+
+	if (/none yet/i.test(firstNonEmpty(sidebarMetadata.Relationships))) {
+		sidebarMetadata.Relationships = "No Relationships defined";
+	}
+
+	if (/no projects/i.test(firstNonEmpty(sidebarMetadata.Projects))) {
+		sidebarMetadata.Projects = "Not added to any project boards";
+	}
+
+	if (/no type/i.test(firstNonEmpty(sidebarMetadata.Type))) {
+		sidebarMetadata.Type = "No Type defined";
+	}
+
+	const listFieldKeys = new Set(["Labels", "Milestone", "Relationships", "Projects"]);
+	const fallbackMessages = new Set([
+		"No milestone set",
+		"No Relationships defined",
+		"Not added to any project boards"
+	]);
+
+	const renderMetadataValue = (key, value) => {
+		if (key === "Labels") {
+			const items = value.split(/,\s*/).map((v) => v.trim()).filter(Boolean);
+			const multiCol = items.length > 4;
+			const lis = items.map((v) => `<li>${escapeHtml(v)}</li>`).join("");
+			return `<ul class="meta-list${multiCol ? " meta-list-cols" : ""}">${lis}</ul>`;
+		}
+		if (listFieldKeys.has(key) && !fallbackMessages.has(value)) {
+			const items = value.split(/,\s*/).map((v) => v.trim()).filter(Boolean);
+			const lis = items.map((v) => `<li>${escapeHtml(v)}</li>`).join("");
+			return `<ul class="meta-list">${lis}</ul>`;
+		}
+		return `<ul class="meta-list"><li>${escapeHtml(value)}</li></ul>`;
+	};
+
 	const metadataEntries = Object.entries(sidebarMetadata).sort(([a], [b]) => a.localeCompare(b));
 	const metadataHtml = metadataEntries.length
-		? metadataEntries
-				.map(([key, value]) => `<tr><th>${escapeHtml(key)}</th><td>${escapeHtml(value)}</td></tr>`)
-				.join("")
-		: "<tr><th>Metadata</th><td>None found</td></tr>";
+		? `<ul class="meta-fields">${metadataEntries
+				.map(([key, value]) => `<li><strong class="meta-field-label">${escapeHtml(key)}:</strong>${renderMetadataValue(key, value)}</li>`)
+				.join("")}</ul>`
+		: "<p>No metadata found.</p>";
 
 	const commentsHtml = comments
 		.map((comment, idx) => {
@@ -603,21 +707,31 @@ javascript:(async () => {
 			font-size: 0.85rem;
 			vertical-align: middle;
 		}
-		table {
-			width: 100%;
-			border-collapse: collapse;
+		.meta-fields {
+			list-style: none;
+			padding: 0;
+			margin: 0;
 		}
-		th, td {
-			border: 1px solid var(--border);
-			padding: 8px;
-			text-align: left;
-			vertical-align: top;
+		.meta-fields > li {
+			padding: 6px 0;
+			border-bottom: 1px solid var(--border);
 		}
-		th {
-			width: 180px;
-			background: #f6f8fa;
+		.meta-fields > li:last-child {
+			border-bottom: none;
+		}
+		.meta-field-label {
+			display: block;
+			margin-bottom: 4px;
 			color: var(--muted);
-			font-weight: 600;
+		}
+		.meta-list {
+			list-style: disc;
+			margin: 0 0 0 16px;
+			padding: 0;
+		}
+		.meta-list-cols {
+			columns: 2;
+			column-gap: 16px;
 		}
 		.entry {
 			border: 1px solid var(--border);
@@ -679,7 +793,7 @@ javascript:(async () => {
 
 		<section class="card">
 			<h2>Metadata</h2>
-			<table>${metadataHtml}</table>
+			${metadataHtml}
 		</section>
 
 		<section class="card">
