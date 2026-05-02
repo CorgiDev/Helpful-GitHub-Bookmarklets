@@ -3,6 +3,15 @@ const path = require("path");
 const readline = require("readline");
 const { spawnSync } = require("child_process");
 
+// List of editable variables you can set here:
+    const auditRequestURL = "";
+    const refiningIssueURL = "";
+    const handoffIssueURL = "";
+    const projectBoardURL = "";
+    const serviceLabel = "";
+    const projectLabel = "";
+// End of editable variables
+
 const SCREEN_READER_TERMS = [
     "NVDA",
     "JAWS",
@@ -322,56 +331,61 @@ function maybeGenerateCopilotSummary(projectTitle, projectUrl, issues, analysis)
     return summaryText;
 }
 
-function buildMarkdown(projectTitle, projectUrl, issues, analysis, generalSummary) {
+function buildMarkdown(projectTitle, projectUrl, issues, analysis, generalSummary, serviceLabel, projectLabel, auditRequestURL, refiningIssueURL, handoffIssueURL) {
     const lines = [];
 
-    lines.push("## Issue Summary");
+    lines.push(`# Summary for ${projectTitle} Accessibility Audit\n`);
+    lines.push(`This report was generated on ${new Date().toLocaleString()}.\n`);
+
+    lines.push(`- Service Label: ${serviceLabel}`);
+    lines.push(`- Project Label: ${projectLabel}`);
+    lines.push(`- Audit Request URL: ${auditRequestURL}`);
+    lines.push(`- Refining Request URL: ${refiningIssueURL}`);
+    lines.push(`- Handoff Issue URL: ${handoffIssueURL}`);
+    lines.push(`- Project Board URL: ${projectBoardURL}`);
+
+    lines.push("\n## Issue Analysis\n");
     lines.push(`- Total number of open issues: ${issues.length}`);
 
-    lines.push(
-        "- Severity Breakdown: (These are identified by looking for a label on the issue that begins with \"Severity-\")"
-    );
+    lines.push("\n### Severity Breakdown\n");
     const severityEntries = sortEntriesByCountThenName(analysis.severityCounts);
     if (severityEntries.length === 0) {
-        lines.push("    - No severity labels found");
+        lines.push("- No severity labels found");
     } else {
         for (const [label, count] of severityEntries) {
-            lines.push(`    - ${label}: ${count} ${pluralizeIssue(count)}`);
+            lines.push(`- ${label}: ${count} ${pluralizeIssue(count)}`);
         }
     }
 
-    lines.push(
-        "- WCAG Breakdown: (These are identified by looking for a label on the issue that begins with \"WCAG \")"
-    );
+    lines.push("\n### WCAG Breakdown\n");
     const wcagEntries = sortEntriesByCountThenName(analysis.wcagCounts);
     if (wcagEntries.length === 0) {
-        lines.push("    - No WCAG labels found");
+        lines.push("- No WCAG labels found");
     } else {
         for (const [label, count] of wcagEntries) {
-            lines.push(`    - ${label}: ${count} ${pluralizeIssue(count)}`);
+            lines.push(`- **${label}**: ${count} ${pluralizeIssue(count)}`);
         }
     }
 
-    lines.push("- Issues that reference a screen reader (NVDA, JAWS, VoiceOver, TalkBack, etc.):");
+    lines.push("\n### Possible Screen Reader Related Issues\n");
+    lines.push("Issues in this section are ones that may involve issues related to how screen readers (e.g.,NVDA, JAWS, VoiceOver, TalkBack, etc.) are able to interpret the content.\n");
     if (analysis.screenReaderIssues.length === 0) {
-        lines.push("    - None");
+        lines.push("- None");
     } else {
         for (const issue of analysis.screenReaderIssues) {
-            lines.push(`    - [Issue #${issue.number}: ${issue.title}](${issue.url})`);
+            lines.push(`- [**Issue #${issue.number}**: ${issue.title}](${issue.url})`);
         }
     }
 
-    lines.push("");
-    lines.push("## General Summary");
+    lines.push("\n## Copilot Generated Audit Summary\n");
     lines.push(generalSummary.trim());
-    lines.push("");
-    lines.push(`_Project: ${projectTitle}_`);
-    lines.push(`_URL: ${projectUrl}_`);
+    lines.push("\n");
 
     return lines.join("\n");
 }
 
 async function main() {
+
     console.log("GitHub Project Issue Summary Generator\n");
 
     try {
@@ -382,8 +396,7 @@ async function main() {
         process.exit(1);
     }
 
-    const inputUrl = await ask("Enter GitHub project URL: ");
-    const normalizedUrl = normalizeProjectUrl(inputUrl);
+    const normalizedUrl = normalizeProjectUrl(projectBoardURL);
     const parsed = parseProjectUrl(normalizedUrl);
 
     if (!parsed) {
@@ -408,7 +421,7 @@ async function main() {
     console.log("Generating general summary with Copilot CLI...");
 
     const generalSummary = maybeGenerateCopilotSummary(projectTitle, summaryUrl, issues, analysis);
-    const markdown = buildMarkdown(projectTitle, summaryUrl, issues, analysis, generalSummary);
+    const markdown = buildMarkdown(projectTitle, summaryUrl, issues, analysis, generalSummary, serviceLabel, projectLabel, auditRequestURL, refiningIssueURL,handoffIssueURL);
 
     const fileName = `${toDateStamp()}_${toSafeFileName(projectTitle)}.md`;
     const outputPath = path.join(__dirname, fileName);
