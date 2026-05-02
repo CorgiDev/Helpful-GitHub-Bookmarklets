@@ -1,0 +1,14 @@
+{
+	"manifest_version": 3,
+	"name": "GitHub Offline Issue Copy",
+	"version": "1.0.0",
+	"description": "Export GitHub issues, pull requests, and discussions to offline HTML files with embedded assets.",
+	"permissions": ["activeTab", "scripting"],
+	"host_permissions": ["https://github.com/*"],
+	"action": {
+		"default_title": "Export GitHub Issue / PR / Discussion to Offline HTML"
+	},
+	"background": {
+		"service_worker": "background.js"
+	}
+}
